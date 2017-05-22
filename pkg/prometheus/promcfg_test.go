@@ -64,6 +64,17 @@ func generateTestConfig() ([]byte, error) {
 						v1.ResourceMemory: resource.MustParse("400Mi"),
 					},
 				},
+				Remote: &v1alpha1.RemoteSpec{
+					RemoteStorage: []v1alpha1.RemoteStorageEndpoints{
+						{
+							Name:      "remote-storage",
+							Namespace: "monitoring",
+							Port:      intstr.FromInt(80),
+							WritePath: "/write",
+							ReadPath:  "/read",
+						},
+					},
+				},
 			},
 		},
 		makeServiceMonitors(),

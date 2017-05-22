@@ -80,6 +80,8 @@ type PrometheusSpec struct {
 	RoutePrefix string `json:"routePrefix,omitempty"`
 	// Storage spec to specify how storage shall be used.
 	Storage *StorageSpec `json:"storage,omitempty"`
+	// Remote spec to specify how remote storage shall be used.
+	Remote *RemoteSpec `json:"remote,omitempty"`
 	// A selector to select which ConfigMaps to mount for loading rule files from.
 	RuleSelector *metav1.LabelSelector `json:"ruleSelector,omitempty"`
 	// Define details regarding alerting.
@@ -100,7 +102,6 @@ type PrometheusSpec struct {
 	// of secrets.
 	Secrets []string `json:"secrets,omitempty"`
 	// EvaluationInterval string                    `json:"evaluationInterval"`
-	// Remote          RemoteSpec                 `json:"remote"`
 	// Sharding...
 }
 
@@ -141,6 +142,36 @@ type StorageSpec struct {
 	// Resources represents the minimum resources the volume should have. More
 	// info: http://kubernetes.io/docs/user-guide/persistent-volumes#resources
 	Resources v1.ResourceRequirements `json:"resources"`
+}
+
+// RemoteSpec defines the remote storage for a group of Prometheus servers.
+type RemoteSpec struct {
+	// RemoteStorageEndpoints Prometheus should read and write from.
+	RemoteStorage []RemoteStorageEndpoints `json:"remoteStorage"`
+}
+
+// RemoteStorageEndpoints defines a selection of single Endpoints objects
+// to use as remote storage
+type RemoteStorageEndpoints struct {
+	// Namespace of RemoteStorageEndpoints object.
+	Namespace string `json:"namespace"`
+	// Name of RemoteStorageEndpoints object in Namespace.
+	Name string `json:"name"`
+	// Port the remote storage endpoint is exposed on.
+	Port intstr.IntOrString `json:"port,omitempty"`
+	// HTTP scheme to use when reading or writing.
+	Scheme string `json:"scheme,omitempty"`
+	// WritePath specifies the path on the endpoint for writes.
+	WritePath string `json:"writePath,omitempty"`
+	// ReadPath specifies the path on the endpoint for reads.
+	ReadPath string `json:"readPath,omitempty"`
+	// TLS configuration to use when connecting to the remote storage.
+	TLSConfig *TLSConfig `json:"tlsConfig,omitempty"`
+	// File to read bearer token for connecting to the remote storage.
+	BearerTokenFile string `json:"bearerTokenFile,omitempty"`
+	// BasicAuth allow an endpoint to authenticate over basic authentication
+	// More info: https://prometheus.io/docs/operating/configuration/#endpoints
+	BasicAuth *BasicAuth `json:"basicAuth,omitempty"`
 }
 
 // AlertmanagerEndpoints defines a selection of a single Endpoints object

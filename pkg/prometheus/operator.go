@@ -863,20 +863,54 @@ func (c *Operator) destroyPrometheus(key string) error {
 	return nil
 }
 
-func (c *Operator) loadBasicAuthSecrets(mons map[string]*v1alpha1.ServiceMonitor, s *v1.SecretList) (map[string]BasicAuthCredentials, error) {
+func (c *Operator) loadBasicAuthSecrets(p *v1alpha1.Prometheus, mons map[string]*v1alpha1.ServiceMonitor, s *v1.SecretList) (map[string]BasicAuthCredentials, error) {
 
 	secrets := map[string]BasicAuthCredentials{}
 
-	for _, mon := range mons {
-
-		for i, ep := range mon.Spec.Endpoints {
-
-			if ep.BasicAuth != nil {
-
+	for _, secret := range s.Items {
+		for i, remote := range p.Spec.Remote.RemoteStorage {
+			if remote.BasicAuth != nil {
 				var username string
 				var password string
 
-				for _, secret := range s.Items {
+				if secret.Name == remote.BasicAuth.Username.Key {
+
+					if u, ok := secret.Data[remote.BasicAuth.Username.Name]; ok {
+						username = string(u)
+					} else {
+						return nil, fmt.Errorf("Secret password of remote storage %s not found",
+							remote.Name)
+					}
+
+				}
+
+				if secret.Name == remote.BasicAuth.Password.Key {
+
+					if p, ok := secret.Data[remote.BasicAuth.Password.Name]; ok {
+						password = string(p)
+					} else {
+						return nil, fmt.Errorf("Secret username of remote storage %s not found",
+							remote.Name)
+					}
+
+				}
+
+				secrets[fmt.Sprintf("remote/%s/%s/%d", remote.Namespace, remote.Name, i)] =
+					BasicAuthCredentials{
+						username: username,
+						password: password,
+					}
+			}
+		}
+
+		for _, mon := range mons {
+
+			for i, ep := range mon.Spec.Endpoints {
+
+				if ep.BasicAuth != nil {
+
+					var username string
+					var password string
 
 					if secret.Name == ep.BasicAuth.Username.Key {
 
@@ -898,14 +932,14 @@ func (c *Operator) loadBasicAuthSecrets(mons map[string]*v1alpha1.ServiceMonitor
 						}
 
 					}
+
+					secrets[fmt.Sprintf("%s/%s/%d", mon.Namespace, mon.Name, i)] =
+						BasicAuthCredentials{
+							username: username,
+							password: password,
+						}
+
 				}
-
-				secrets[fmt.Sprintf("%s/%s/%d", mon.Namespace, mon.Name, i)] =
-					BasicAuthCredentials{
-						username: username,
-						password: password,
-					}
-
 			}
 		}
 	}
@@ -928,7 +962,7 @@ func (c *Operator) createConfig(p *v1alpha1.Prometheus, ruleFileConfigMaps []*v1
 		return err
 	}
 
-	basicAuthSecrets, err := c.loadBasicAuthSecrets(smons, listSecrets)
+	basicAuthSecrets, err := c.loadBasicAuthSecrets(p, smons, listSecrets)
 
 	if err != nil {
 		return err

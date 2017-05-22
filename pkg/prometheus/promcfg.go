@@ -107,6 +107,24 @@ func generateConfig(p *v1alpha1.Prometheus, mons map[string]*v1alpha1.ServiceMon
 		},
 	})
 
+	if p.Spec.Remote != nil {
+		var remoteReadConfigs []yaml.MapSlice
+		var remoteWriteConfigs []yaml.MapSlice
+		for i, rs := range p.Spec.Remote.RemoteStorage {
+			if len(rs.ReadPath) > 0 {
+				remoteReadConfigs = append(remoteReadConfigs, generateRemoteReadConfig(rs, i, basicAuthSecrets))
+			}
+
+			if len(rs.WritePath) > 0 {
+				remoteWriteConfigs = append(remoteWriteConfigs, generateRemoteWriteConfig(rs, i, basicAuthSecrets))
+			}
+		}
+		cfg = append(cfg, yaml.MapItem{
+			Key:   "remote_write",
+			Value: remoteWriteConfigs,
+		})
+	}
+
 	return yaml.Marshal(cfg)
 }
 
@@ -374,4 +392,68 @@ func generateAlertmanagerConfig(am v1alpha1.AlertmanagerEndpoints) yaml.MapSlice
 	cfg = append(cfg, yaml.MapItem{Key: "relabel_configs", Value: relabelings})
 
 	return cfg
+}
+
+func generateRemoteConfig(rs v1alpha1.RemoteStorageEndpoints, path string, i int, basicAuthSecrets map[string]BasicAuthCredentials) yaml.MapSlice {
+	if rs.Scheme == "" {
+		rs.Scheme = "http"
+	}
+
+	endpoint := rs.Name
+
+	if rs.Namespace != "" {
+		endpoint = fmt.Sprintf("%s.%s", endpoint, rs.Namespace)
+	}
+
+	cfg := yaml.MapSlice{
+		{
+			Key: "url",
+			Value: []yaml.MapSlice{
+				yaml.MapSlice{
+					{Key: "url", Value: fmt.Sprintf("%s://%s:%v/%s", rs.Scheme, endpoint, rs.Port, path)},
+				},
+			},
+		},
+	}
+	if rs.TLSConfig != nil {
+		tlsConfig := yaml.MapSlice{
+			{Key: "insecure_skip_verify", Value: rs.TLSConfig.InsecureSkipVerify},
+		}
+		if rs.TLSConfig.CAFile != "" {
+			tlsConfig = append(tlsConfig, yaml.MapItem{Key: "ca_file", Value: rs.TLSConfig.CAFile})
+		}
+		if rs.TLSConfig.CertFile != "" {
+			tlsConfig = append(tlsConfig, yaml.MapItem{Key: "cert_file", Value: rs.TLSConfig.CertFile})
+		}
+		if rs.TLSConfig.KeyFile != "" {
+			tlsConfig = append(tlsConfig, yaml.MapItem{Key: "key_file", Value: rs.TLSConfig.KeyFile})
+		}
+		if rs.TLSConfig.ServerName != "" {
+			tlsConfig = append(tlsConfig, yaml.MapItem{Key: "server_name", Value: rs.TLSConfig.ServerName})
+		}
+		cfg = append(cfg, yaml.MapItem{Key: "tls_config", Value: tlsConfig})
+	}
+	if rs.BearerTokenFile != "" {
+		cfg = append(cfg, yaml.MapItem{Key: "bearer_token_file", Value: rs.BearerTokenFile})
+	}
+
+	if rs.BasicAuth != nil {
+		if s, ok := basicAuthSecrets[fmt.Sprintf("remote/%s/%s/%d", rs.Namespace, rs.Name, i)]; ok {
+			cfg = append(cfg, yaml.MapItem{
+				Key: "basic_auth", Value: yaml.MapSlice{
+					{Key: "username", Value: s.username},
+					{Key: "password", Value: s.password},
+				},
+			})
+		}
+	}
+
+	return cfg
+}
+func generateRemoteReadConfig(rs v1alpha1.RemoteStorageEndpoints, i int, basicAuthSecrets map[string]BasicAuthCredentials) yaml.MapSlice {
+	return generateRemoteConfig(rs, rs.ReadPath, i, basicAuthSecrets)
+}
+
+func generateRemoteWriteConfig(rs v1alpha1.RemoteStorageEndpoints, i int, basicAuthSecrets map[string]BasicAuthCredentials) yaml.MapSlice {
+	return generateRemoteConfig(rs, rs.WritePath, i, basicAuthSecrets)
 }
