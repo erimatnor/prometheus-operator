@@ -111,18 +111,28 @@ func generateConfig(p *v1alpha1.Prometheus, mons map[string]*v1alpha1.ServiceMon
 		var remoteReadConfigs []yaml.MapSlice
 		var remoteWriteConfigs []yaml.MapSlice
 		for i, rs := range p.Spec.Remote.RemoteStorage {
-			if len(rs.ReadPath) > 0 {
+			if rs.ReadPath != "" {
 				remoteReadConfigs = append(remoteReadConfigs, generateRemoteReadConfig(rs, i, basicAuthSecrets))
 			}
 
-			if len(rs.WritePath) > 0 {
+			if rs.WritePath != "" {
 				remoteWriteConfigs = append(remoteWriteConfigs, generateRemoteWriteConfig(rs, i, basicAuthSecrets))
 			}
 		}
-		cfg = append(cfg, yaml.MapItem{
-			Key:   "remote_write",
-			Value: remoteWriteConfigs,
-		})
+
+		if len(remoteWriteConfigs) > 0 {
+			cfg = append(cfg, yaml.MapItem{
+				Key:   "remote_write",
+				Value: remoteWriteConfigs,
+			})
+		}
+
+		if len(remoteReadConfigs) > 0 {
+			cfg = append(cfg, yaml.MapItem{
+				Key:   "remote_read",
+				Value: remoteReadConfigs,
+			})
+		}
 	}
 
 	return yaml.Marshal(cfg)
@@ -405,16 +415,17 @@ func generateRemoteConfig(rs v1alpha1.RemoteStorageEndpoints, path string, i int
 		endpoint = fmt.Sprintf("%s.%s", endpoint, rs.Namespace)
 	}
 
+	if path != "" && path[0] == '/' {
+		path = path[1:]
+	}
+
 	cfg := yaml.MapSlice{
 		{
-			Key: "url",
-			Value: []yaml.MapSlice{
-				yaml.MapSlice{
-					{Key: "url", Value: fmt.Sprintf("%s://%s:%v/%s", rs.Scheme, endpoint, rs.Port, path)},
-				},
-			},
+			Key:   "url",
+			Value: fmt.Sprintf("%s://%s:%d/%s", rs.Scheme, endpoint, rs.Port.IntValue(), path),
 		},
 	}
+
 	if rs.TLSConfig != nil {
 		tlsConfig := yaml.MapSlice{
 			{Key: "insecure_skip_verify", Value: rs.TLSConfig.InsecureSkipVerify},
@@ -433,6 +444,7 @@ func generateRemoteConfig(rs v1alpha1.RemoteStorageEndpoints, path string, i int
 		}
 		cfg = append(cfg, yaml.MapItem{Key: "tls_config", Value: tlsConfig})
 	}
+
 	if rs.BearerTokenFile != "" {
 		cfg = append(cfg, yaml.MapItem{Key: "bearer_token_file", Value: rs.BearerTokenFile})
 	}
